@@ -1,29 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <plugin
-   id="element-selector"
-   name="Blacklist and Whitelist Parser and Indexer"
-   version="1.0.0"
-   provider-name="kaqqao">
+    id="index-element-selector"
+    name="Blacklist and Whitelist Parser and Indexer"
+    version="1.0.0"
+    provider-name="charlie.chen">
 
    <runtime>
-      <library name="element-selector.jar">
+      <library name="index-element-selector.jar">
          <export name="*"/>
       </library>
    </runtime>
 
-   <extension id="kaqqao.nutch.selector.HtmlElementSelectorIndexer"
+   <requires>
+      <import plugin="nutch-extensionpoints"/>
+   </requires>
+
+   <extension id="org.apache.nutch.plugin.selector.HtmlElementSelectorIndexer"
               name="Nutch Blacklist and Whitelist Indexing Filter"
               point="org.apache.nutch.indexer.IndexingFilter">
       <implementation id="HtmlElementSelectorIndexer"
-                      class="kaqqao.nutch.plugin.selector.HtmlElementSelectorIndexer"/>
+                      class="org.apache.nutch.plugin.selector.HtmlElementSelectorIndexer"/>
    </extension>
 
-	<extension id="kaqqao.nutch.selector.HtmlElementSelectorFilter"
+   <extension id="org.apache.nutch.plugin.selector.HtmlElementSelectorFilter"
               name="Nutch Blacklist and Whitelist Parsing Filter"
-              point="org.apache.nutch.parse.ParseFilter">
+              point="org.apache.nutch.parse.HtmlParseFilter">
       <implementation id="HtmlElementSelectorFilter"
-                      class="kaqqao.nutch.plugin.selector.HtmlElementSelectorFilter"/>
+                      class="org.apache.nutch.plugin.selector.HtmlElementSelectorFilter"/>
    </extension>
 
 </plugin>
+

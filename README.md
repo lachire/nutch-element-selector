@@ -1,10 +1,8 @@
-**WARNING:** This project is no longer actively maintained. I might restart it in the future, but no hard promises. If you're interested in taking it over, contact me.
-
 nutch-element-selector
 ======================
 
-Nutch 2.3.1 plugin for whitelisting/blacklisting specific HTML elements.
-Based on Nutch 1.x plugin called index-blacklist-whitelist by Elisabeth Adler (full credit to the original author).
+Nutch 1.14 plugin for whitelisting/blacklisting specific HTML elements.
+Based on kaqqao's Nutch 2.3.1 plugin (https://github.com/kaqqao/nutch-element-selector), and the Nutch 1.x plugin called index-blacklist-whitelist by Elisabeth Adler (full credit to the original authors).
 
 Usage
 ======================
@@ -52,7 +50,7 @@ To enable the plugin, override the default list by adding the following (notice 
 
     <property>
     	<name>plugin.includes</name>
-		<value>protocol-http|urlfilter-regex|parse-(html|tika)|element-selector|index-(basic|anchor)|urlnormalizer-(pass|regex|basic)|scoring-opic</value>
+		<value>protocol-http|urlfilter-regex|parse-(html|tika)|index-element-selector|index-(basic|anchor)|urlnormalizer-(pass|regex|basic)|scoring-opic</value>
 		<description>
 			Regular expression naming plugin directory names to
 			include.  Any plugin not matching this expression is excluded.
@@ -64,4 +62,4 @@ To enable the plugin, override the default list by adding the following (notice 
 		</description>
 	</property>
     
-Unless you're overriding the storage field, it is important to include `element-selector` _before_ `index-(basic|anchor)`!
+Unless you're overriding the storage field, it is important to include `index-element-selector` _before_ `index-(basic|anchor)`!

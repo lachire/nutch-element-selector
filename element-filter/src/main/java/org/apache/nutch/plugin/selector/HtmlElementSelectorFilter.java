@@ -1,20 +1,5 @@
-package kaqqao.nutch.plugin.selector;
+package org.apache.nutch.plugin.selector;
 
-import org.apache.avro.util.Utf8;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.nutch.parse.HTMLMetaTags;
-import org.apache.nutch.parse.Parse;
-import org.apache.nutch.parse.ParseFilter;
-import org.apache.nutch.storage.WebPage;
-import org.apache.nutch.util.NodeWalker;
-import org.w3c.dom.DocumentFragment;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.Charset;
-import java.nio.charset.CharsetEncoder;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -22,43 +7,67 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class HtmlElementSelectorFilter implements ParseFilter {
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.nutch.parse.*;
+import org.apache.nutch.protocol.Content;
+import org.apache.nutch.util.NodeWalker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.DocumentFragment;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+/**
+ * Class to parse the content and apply a blacklist or whitelist. The content is stored in
+ * the index in the configured storage field, or replacing the original content.<br/>
+ * If a blacklist configuration is provided, all elements plus their subelements are not included in the
+ * final content field which is indexed. If a whitelist configuration is provided, only the elements
+ * and their subelements are included in the indexed field.<br/><br/>
+ * On the basis of {@link https://issues.apache.org/jira/browse/NUTCH-585}
+ *
+ * Adapted from https://github.com/kaqqao/nutch-element-selector
+ *
+ * original author Elisabeth Adler
+ *
+ * @author Charlie Chen
+ */
+public class HtmlElementSelectorFilter implements HtmlParseFilter {
+    private final Logger log = LoggerFactory.getLogger(HtmlElementSelectorFilter.class);
 
     private Configuration conf;
     private String storageField;
     private Set<String> protectedURLs;
-    private Collection<WebPage.Field> fields = new HashSet<WebPage.Field>();
     private Pattern cssSelectorPattern = Pattern.compile("(\\.|#|\\[|^)([a-zA-Z0-9-_]*)(?:=(.+)\\])?", Pattern.CASE_INSENSITIVE);
 
     private Set<Selector> blackListSelectors = new HashSet<Selector>();
     private Set<Selector> whiteListSelectors = new HashSet<Selector>();
 
     @Override
-    public Parse filter(String s, WebPage webPage, Parse parse, HTMLMetaTags htmlMetaTags, DocumentFragment documentFragment) {
+    public ParseResult filter(Content content, ParseResult parseResult, HTMLMetaTags metaTags, DocumentFragment doc) {
+        Parse parse = parseResult.get(content.getUrl());
+
         DocumentFragment rootToIndex;
         StringBuilder strippedContent = new StringBuilder();
-        if (whiteListSelectors.size() > 0 && !protectedURLs.contains(webPage.getBaseUrl())) {
-            rootToIndex = (DocumentFragment) documentFragment.cloneNode(false);
-            whitelisting(documentFragment, rootToIndex);
-        } else if (blackListSelectors.size() > 0 && !protectedURLs.contains(webPage.getBaseUrl())) {
-            rootToIndex = (DocumentFragment) documentFragment.cloneNode(true);
+        if (whiteListSelectors.size() > 0 && !protectedURLs.contains(content.getBaseUrl())) {
+            rootToIndex = (DocumentFragment) doc.cloneNode(false);
+            whitelisting(doc, rootToIndex);
+        } else if (blackListSelectors.size() > 0 && !protectedURLs.contains(content.getBaseUrl())) {
+            rootToIndex = (DocumentFragment) doc.cloneNode(true);
             blacklisting(rootToIndex);
         } else {
-            return parse;
+            return parseResult;
         }
 
         getText(strippedContent, rootToIndex);
         if (storageField == null) {
-            parse.setText(strippedContent.toString());
+            parseResult.put(new Text(content.getUrl()), new ParseText(strippedContent.toString()), parse.getData());
         } else {
-            CharsetEncoder encoder = Charset.forName("UTF-8").newEncoder();
-            try {
-                webPage.getMetadata().put(new Utf8(storageField), encoder.encode(CharBuffer.wrap(strippedContent.toString())));
-            } catch (CharacterCodingException e) {
-                e.printStackTrace();
-            }
+            parse.getData().getContentMeta().set(storageField, strippedContent.toString());
         }
-        return parse;
+        return parseResult;
     }
 
     private void blacklisting(Node node) {
@@ -66,6 +75,7 @@ public class HtmlElementSelectorFilter implements ParseFilter {
 
         for(Selector blackListSelector : blackListSelectors) {
             if(blackListSelector.matches(node)) {
+                log.debug("In blacklist: {}", printNode(node));
                 node.setNodeValue("");
 
                 while (node.hasChildNodes()) {
@@ -91,6 +101,7 @@ public class HtmlElementSelectorFilter implements ParseFilter {
 
         for(Selector whiteListSelector : whiteListSelectors) {
             if(whiteListSelector.matches(node)) {
+                log.debug("In whitelist: {}", printNode(node));
                 newNode.appendChild(node.cloneNode(true));
                 wasAppended = true;
                 break;
@@ -121,10 +132,10 @@ public class HtmlElementSelectorFilter implements ParseFilter {
             if ("style".equalsIgnoreCase(nodeName)) {
                 walker.skipChildren();
             }
-            if (nodeType == 8) {
+            if (nodeType == Node.COMMENT_NODE) {
                 walker.skipChildren();
             }
-            if (nodeType == 3) {
+            if (nodeType == Node.TEXT_NODE) {
                 String text = currentNode.getNodeValue();
                 text = text.replaceAll("\\s+", " ");
                 text = text.trim();
@@ -142,6 +153,7 @@ public class HtmlElementSelectorFilter implements ParseFilter {
 
         String elementsToExclude = getConf().get("parser.html.selector.blacklist", null);
         if ((elementsToExclude != null) && (elementsToExclude.trim().length() > 0)) {
+            log.info("Configured using [parser.html.blacklist] to ignore elements [{}]...", elementsToExclude);
             String[] blackListCssSelectors = elementsToExclude.split(",");
             for (String cssSelector : blackListCssSelectors) {
                 blackListSelectors.add(parseCssSelector(cssSelector));
@@ -150,6 +162,7 @@ public class HtmlElementSelectorFilter implements ParseFilter {
 
         String elementsToInclude = getConf().get("parser.html.selector.whitelist", null);
         if ((elementsToInclude != null) && (elementsToInclude.trim().length() > 0)) {
+            log.info("Configured using [parser.html.whitelist] to only use elements [{}]...", elementsToInclude);
             String[] whiteListCssSelectors = elementsToInclude.split(",");
             for (String cssSelector : whiteListCssSelectors) {
                 whiteListSelectors.add(parseCssSelector(cssSelector));
@@ -157,8 +170,15 @@ public class HtmlElementSelectorFilter implements ParseFilter {
         }
 
         this.storageField = getConf().get("parser.html.selector.storage_field", null);
+        if (StringUtils.isNotBlank(storageField)) {
+            log.info("Configured using [parser.html.selector.storage_field] to use meta field [{}] as storage",
+                    storageField);
+        }
 
-        this.protectedURLs = new HashSet<String>(Arrays.asList(getConf().get("parser.html.selector.protected_urls", "").split(",")));
+        this.protectedURLs = new HashSet<>(Arrays.asList(getConf().get("parser.html.selector.protected_urls", "").split(",")));
+        if (!this.protectedURLs.isEmpty()) {
+            log.info("Configured using [parser.html.selector.protected_urls]: {}", protectedURLs.toString());
+        }
     }
 
     @Override
@@ -166,13 +186,8 @@ public class HtmlElementSelectorFilter implements ParseFilter {
         return this.conf;
     }
 
-    @Override
-    public Collection<WebPage.Field> getFields() {
-        return fields;
-    }
-
     private Selector parseCssSelector(String cssSelector) {
-        Set<Selector> selectors = new HashSet<Selector>();
+        Set<Selector> selectors = new HashSet<>();
         Matcher matcher = cssSelectorPattern.matcher(cssSelector);
         while (matcher.find()) {
             Discriminator discriminator = Discriminator.fromString(matcher.group(1));
@@ -186,6 +201,20 @@ public class HtmlElementSelectorFilter implements ParseFilter {
         }
 
         return new AggregatedSelector(selectors);
+    }
+
+    private String printNode(Node node) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<").append(node.getNodeName());
+        NamedNodeMap attributes = node.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            Node attr = attributes.item(i);
+            if (attr != null && attr.getNodeValue() != null) {
+                sb.append(" ").append(attr.getNodeName()).append("=").append(attr.getNodeValue());
+            }
+        }
+        sb.append(">");
+        return sb.toString();
     }
 
     private interface Selector {
@@ -211,7 +240,7 @@ public class HtmlElementSelectorFilter implements ParseFilter {
             }
             throw new IllegalArgumentException(String.format(
                     "String %s is an invalid CSS selector discriminator. " +
-                    "Only \"#\", \".\", \"[\" or an empty string are allowed!", discriminatorString));
+                            "Only \"#\", \".\", \"[\" or an empty string are allowed!", discriminatorString));
         }
     }
 
@@ -241,11 +270,11 @@ public class HtmlElementSelectorFilter implements ParseFilter {
 
         @Override
         public boolean matches(Node node) {
-            Set<String> classes = new HashSet<String>();
+            Set<String> classes = new HashSet<>();
             if (node.hasAttributes()) {
                 Node classNode = node.getAttributes().getNamedItem("class");
                 if (classNode != null && classNode.getNodeValue() != null) {
-                    classes.addAll(Arrays.asList(classNode.getNodeValue().toLowerCase().split("\\s")));
+                    classes.addAll(Arrays.asList(classNode.getNodeValue().toLowerCase().split("\\s+")));
                 }
             }
             return classes.contains(cssClass);
@@ -265,7 +294,7 @@ public class HtmlElementSelectorFilter implements ParseFilter {
         public boolean matches(Node node) {
             if (node.hasAttributes()) {
                 Node idNode = node.getAttributes().getNamedItem("id");
-                return idNode != null ? id.equalsIgnoreCase(idNode.getNodeValue()) : false;
+                return idNode != null && id.equalsIgnoreCase(idNode.getNodeValue());
             }
 
             return false;

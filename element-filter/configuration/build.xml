@@ -15,7 +15,7 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -->
-<project name="element-selector" default="jar">
+<project name="index-element-selector" default="jar-core">
 
   <import file="../build-plugin.xml"/>
 
