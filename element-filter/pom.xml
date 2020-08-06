@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>kaqqao.nutch.plugin</groupId>
-  <artifactId>indedx-element-selector</artifactId>
+  <artifactId>index-element-selector</artifactId>
   <version>1.0.0</version>
   <packaging>jar</packaging>
 
